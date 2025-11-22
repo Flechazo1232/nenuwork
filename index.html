@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时间规划器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#6b7280',
+                        aiChat: {
+                            bg: '#f0f4ff',
+                            userBg: '#3b82f6',
+                            userText: '#ffffff',
+                            botBg: '#ffffff',
+                            botText: '#374151',
+                            border: '#d1d5db',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    transitionTimingFunction: {
+                        'bounce-slow': 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .clock-ring {
+                position: relative;
+                width: min(300px, 80vw);
+                height: min(300px, 80vw);
+                border-radius: 50%;
+                transition: all 0.3s ease;
+            }
+            .clock-number {
+                position: absolute;
+                transform: translate(-50%, -50%);
+                font-size: clamp(12px, 2vw, 14px);
+                font-weight: 500;
+                transition: all 0.2s ease;
+            }
+            .task-bar {
+                height: 28px;
+                border-radius: 6px;
+                font-size: 13px;
+                color: white;
+                display: flex;
+                align-items: center;
+                padding: 0 10px;
+                margin-bottom: 6px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                transition: all 0.3s ease;
+                cursor: pointer;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            }
+            .task-bar:hover {
+                transform: translateX(4px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes slideIn {
+                from { transform: translateX(-20px); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+            @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
+            .animate-fade-in {
+                animation: fadeIn 0.3s ease-out;
+            }
+            .animate-fade-out {
+                animation: fadeOut 0.3s ease-out;
+            }
+            .animate-slide-in {
+                animation: slideIn 0.2s ease-out;
+            }
+            .animate-pulse-slow {
+                animation: pulse 2s infinite;
+            }
+            .task-item {
+                position: relative;
+                transition: all 0.3s ease;
+                overflow: hidden;
+            }
+            .task-item:hover .delete-btn {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+            .delete-btn {
+                opacity: 0;
+                transition: all 0.2s ease;
+            }
+            .color-option {
+                transition: transform 0.2s ease;
+            }
+            .color-option:hover {
+                transform: scale(1.1);
+            }
+            /* 日计划样式优化 */
+            .daily-plan-card {
+                position: relative;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                overflow: hidden;
+            }
+            .daily-plan-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }
+            .daily-plan-card::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 4px;
+                height: 100%;
+                background: linear-gradient(to bottom, #3b82f6, #60a5fa);
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            }
+            .daily-plan-card:hover::before {
+                opacity: 1;
+            }
+            /* 进度条动画优化 */
+            .progress-bar-fill {
+                transition: width 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            }
+            /* 子任务复选框样式 */
+            .subtask-checkbox {
+                accent-color: #3b82f6;
+                transition: all 0.2s ease;
+                cursor: pointer;
+            }
+            .subtask-checkbox:hover {
+                transform: scale(1.1);
+            }
+            .subtask-checkbox:checked {
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+            }
+            /* 响应式调整 */
+            @media (max-width: 768px) {
+                .container {
+                    padding-left: 1rem;
+                    padding-right: 1rem;
+                }
+                .task-bar {
+                    height: 24px;
+                    font-size: 12px;
+                }
+                /* 日计划区域响应式 */
+                .daily-plan-card {
+                    padding: 12px;
+                }
+                .progress-container {
+                    height: 4px;
+                }
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <!-- 简化的功能面板 - 只在顶部展示三个按钮 -->
+    <div id="feature-window" class="fixed top-4 left-1/2 transform -translate-x-1/2 flex gap-3 z-50 transition-all duration-300">
+        <button id="task-planning-btn" class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 transform hover:-translate-y-1">
+            <i class="fa fa-calendar-plus-o"></i>
+            <span>任务规划</span>
+        </button>
+        <button id="task-review-btn" class="bg-gradient-to-r from-green-500 to-teal-600 text-white py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 transform hover:-translate-y-1">
+            <i class="fa fa-bar-chart"></i>
+            <span>任务复盘</span>
+        </button>
+        <button id="review-history-btn" class="bg-gradient-to-r from-purple-500 to-pink-600 text-white py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 transform hover:-translate-y-1">
+            <i class="fa fa-history"></i>
+            <span>回顾往日</span>
+        </button>
+    </div>
+    
+    <!-- 任务复盘弹窗 (默认隐藏) -->
+    <div id="task-review-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col animate-fade-in">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-800">任务复盘</h3>
+                <button id="close-review-modal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <!-- 时间范围选择器 -->
+                <div class="space-y-4">
+                    <h4 class="font-medium">选择时间范围</h4>
+                    <div class="grid grid-cols-3 gap-3">
+                        <button id="range-today" class="py-2 px-4 bg-white border border-gray-200 rounded-md hover:bg-blue-50 transition-colors text-center">今日</button>
+                        <button id="range-week" class="py-2 px-4 bg-white border border-gray-200 rounded-md hover:bg-blue-50 transition-colors text-center">近七天</button>
+                        <button id="range-21days" class="py-2 px-4 bg-white border border-gray-200 rounded-md hover:bg-blue-50 transition-colors text-center">近21天</button>
+                    </div>
+                    <button id="custom-range-btn" class="w-full py-1 text-blue-600 hover:text-blue-800 transition-colors text-center">自定义时间范围</button>
+                </div>
+                
+                <!-- 自定义日期范围 -->
+                <div id="custom-date-range" class="mt-6 space-y-3 hidden">
+                    <h4 class="font-medium">自定义时间范围</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="date" id="custom-start-date" class="w-full p-2 border border-gray-200 rounded-md">
+                        <input type="date" id="custom-end-date" class="w-full p-2 border border-gray-200 rounded-md">
+                    </div>
+                    <button id="generate-custom-report" class="w-full py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">生成报告</button>
+                </div>
+                
+                <!-- 报告容器 -->
+                <div id="report-container" class="mt-8 space-y-4"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 回顾往日弹窗 (默认隐藏) -->
+    <div id="history-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col animate-fade-in">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-800">回顾往日</h3>
+                <button id="close-history-modal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <!-- 日期选择器 -->
+                <div class="space-y-4">
+                    <h4 class="font-medium">选择日期</h4>
+                    <input type="date" id="history-date" class="w-full p-2 border border-gray-200 rounded-md">
+                    <button id="view-history-btn" class="w-full py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">查看日计划</button>
+                </div>
+                
+                <!-- 历史容器 -->
+                <div id="history-container" class="mt-8 space-y-4">
+                    <p class="text-gray-500 text-center py-4">请选择日期查看日计划</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        /* 功能窗口滚动条美化 */
+        #feature-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #feature-content::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        
+        #feature-content::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        
+        #feature-content::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        
+        /* 默认隐藏功能区域，通过JavaScript控制显示 */
+        #time-range-selector,
+        #custom-date-range,
+        #date-selector {
+            display: none;
+        }
+    </style>
+    
+    <!-- 感受编辑弹窗 -->
+    <div id="feeling-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 transform transition-all duration-300">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-lg font-medium text-gray-800">记录感受</h3>
+                <button id="close-feeling-modal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="p-4">
+                <input type="hidden" id="current-task-id">
+                <label for="feeling-content" class="block text-sm font-medium text-gray-700 mb-2">感受与总结</label>
+                <textarea id="feeling-content" rows="6" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" placeholder="记录下完成这个任务的感受..."></textarea>
+            </div>
+        </div>
+    </div>
+    <!-- 主内容区域 - 添加上边距避免被功能按钮遮挡 -->
+    <div class="container mx-auto px-4 pt-24 pb-8 max-w-6xl">
+        <header class="mb-8 text-center animate-fade-in">
+            <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800">今日完成事项</h1>
+            <p class="text-gray-600">记录每一天的成就与收获</p>
+        </header>
+        
+        <!-- 主容器：左侧内容 + 右侧数据可视化 -->
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- 左侧内容区域 (占2/3宽度) -->
+            <div class="lg:w-2/3">
+                <!-- 现有的时间图和任务管理内容 -->
+                <div class="flex flex-col lg:flex-row gap-6">
+                    <!-- 左侧: 环状时间图 -->
+                    <div class="lg:w-1/2 bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg">
+                        <div class="flex flex-col items-center">
+                            <div class="clock-ring bg-white border-2 border-gray-200 mb-4 shadow-sm transition-all duration-300 hover:shadow-md" id="clock-ring">
+                                <!-- 环状图将通过JavaScript绘制 -->
+                                <canvas id="clock-canvas" width="300" height="300"></canvas>
+                            </div>
+                            <h2 class="text-xl font-semibold text-gray-800 mb-2">时间统计</h2>
+                            <p class="text-sm text-gray-500 mb-4">可视化展示今日时间分配</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧: 任务管理 -->
+                    <div class="lg:w-1/2 bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-semibold text-gray-800">Done list</h2>
+                            <button id="add-task-btn" class="text-primary hover:text-primary/80 transition-all duration-300 transform hover:scale-110">
+                                <i class="fa fa-plus-circle text-xl"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- 任务添加表单 (默认隐藏) -->
+                        <div id="task-form" class="hidden mb-4 p-4 bg-gray-50 rounded-lg shadow-inner transition-all duration-300 transform">
+                            <div class="flex gap-2 mb-2">
+                                <select id="task-color" class="w-20 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200">
+                                    <option value="#ef4444">红色</option>
+                                    <option value="#3b82f6">蓝色</option>
+                                    <option value="#10b981">绿色</option>
+                                    <option value="#f59e0b">黄色</option>
+                                    <option value="#8b5cf6">紫色</option>
+                                    <option value="#D4A7FE">浅紫</option>
+                                    <option value="#A7E0FE">水蓝</option>
+                                    <option value="#C4D7E1">雾蓝</option>
+                                    <option value="#AFF6C1">牛油果</option>
+                                    <option value="#FBAADF">粉色</option>
+                                    <option value="#E12973">桃红</option>
+                                    <option value="#2456A0">藏青</option>
+                                    <option value="#F66939">橙色</option>
+                                </select>
+                                <input type="text" id="task-name" placeholder="输入已完成事项" class="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200">
+                            </div>
+                            <div class="flex gap-2 mb-2">
+                                <select id="task-category" class="w-32 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200">
+                                    <option value="工作">工作</option>
+                                    <option value="学习">学习</option>
+                                    <option value="生活">生活</option>
+                                    <option value="健康">健康</option>
+                                    <option value="其他">其他</option>
+                                </select>
+                                <input type="text" id="task-tags" placeholder="标签 (用逗号分隔)" class="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200">
+                            </div>
+                            <div class="flex gap-2 mb-2">
+                                <input type="time" id="task-start" class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200">
+                                <span class="flex items-center text-gray-500">~</span>
+                                <input type="time" id="task-end" class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200">
+                            </div>
+                            <div class="flex items-center mb-2">
+                                <input type="checkbox" id="task-reminder" class="mr-2">
+                                <label for="task-reminder" class="text-sm text-gray-700">设置提醒</label>
+                                <select id="reminder-before" class="ml-2 p-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 hidden">
+                                    <option value="5">提前5分钟</option>
+                                    <option value="10">提前10分钟</option>
+                                    <option value="15">提前15分钟</option>
+                                    <option value="30">提前30分钟</option>
+                                    <option value="60">提前1小时</option>
+                                </select>
+                            </div>
+                            <button id="confirm-task-btn" class="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all duration-200 transform hover:scale-105">
+                                <i class="fa fa-check mr-1"></i> 记录事项
+                            </button>
+                        </div>
+                        
+                        <!-- 任务列表 -->
+                        <div id="task-list" class="space-y-3 transition-all duration-300">
+                            <p class="text-gray-500 text-center py-6">暂无记录，请点击右上角按钮添加</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 日计划区域 -->
+                <div class="mt-6 bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">日计划</h2>
+                        <button id="add-daily-plan-btn" class="text-primary hover:text-primary/80 transition-all duration-300 transform hover:scale-110">
+                            <i class="fa fa-plus-circle text-xl"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- 日计划列表 -->
+                    <div id="daily-plans" class="space-y-4 transition-all duration-300">
+                        <p class="text-gray-500 text-center py-6">暂无日计划，请点击右上角按钮添加</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧数据可视化区域 (占1/3宽度) -->
+            <div class="lg:w-1/3 flex flex-col gap-4">
+                <!-- 调整后的计划板块布局 -->
+                
+                <!-- 周计划 -->
+                <div class="bg-white rounded-xl shadow-md p-4 transition-all duration-300 hover:shadow-lg flex-1">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-lg font-semibold text-gray-800">周计划</h3>
+                        <button id="add-week-plan-btn" class="text-primary hover:text-primary/80 transition-all duration-300 transform hover:scale-110">
+                            <i class="fa fa-plus-circle text-xl"></i>
+                        </button>
+                    </div>
+                    <div id="week-tasks" class="max-h-60 overflow-y-auto pr-1 space-y-2">
+                        <p class="text-gray-500 text-center text-sm py-8">暂时无计划</p>
+                    </div>
+                </div>
+                
+                <!-- 月计划 -->
+                <div class="bg-white rounded-xl shadow-md p-4 transition-all duration-300 hover:shadow-lg flex-1">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-lg font-semibold text-gray-800">月计划</h3>
+                        <button id="add-month-plan-btn" class="text-primary hover:text-primary/80 transition-all duration-300 transform hover:scale-110">
+                            <i class="fa fa-plus-circle text-xl"></i>
+                        </button>
+                    </div>
+                    <div id="month-tasks" class="max-h-60 overflow-y-auto pr-1 space-y-2">
+                        <p class="text-gray-500 text-center text-sm py-8">暂时无计划</p>
+                    </div>
+                </div>
+                
+                <!-- 年计划 -->
+                <div class="bg-white rounded-xl shadow-md p-4 transition-all duration-300 hover:shadow-lg flex-1">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-lg font-semibold text-gray-800">年计划</h3>
+                        <button id="add-year-plan-btn" class="text-primary hover:text-primary/80 transition-all duration-300 transform hover:scale-110">
+                            <i class="fa fa-plus-circle text-xl"></i>
+                        </button>
+                    </div>
+                    <div id="year-tasks" class="max-h-60 overflow-y-auto pr-1 space-y-2">
+                        <p class="text-gray-500 text-center text-sm py-8">暂时无计划</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 计划编辑表单模态框 (默认隐藏) -->
+        <div id="plan-form-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-xl shadow-lg max-w-md w-full mx-4 animate-fade-in">
+                <div class="flex justify-between items-center p-4 border-b">
+                    <h3 class="text-xl font-semibold text-gray-800" id="plan-modal-title">编辑计划</h3>
+                    <button id="close-plan-modal" class="text-gray-500 hover:text-gray-700 transition-colors">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <input type="hidden" id="plan-type"> <!-- 存储是周、月还是年计划 -->
+                    <input type="hidden" id="plan-id"> <!-- 存储编辑的计划ID -->
+                    
+                    <div class="mb-4">
+                        <label for="plan-title" class="block text-sm font-medium text-gray-700 mb-1">计划标题</label>
+                        <input type="text" id="plan-title" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="plan-deadline" class="block text-sm font-medium text-gray-700 mb-1">截止时间</label>
+                        <input type="date" id="plan-deadline" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">小计划（子任务）</label>
+                        <div id="subtasks-container" class="space-y-2">
+                            <div class="flex items-center subtask-item">
+                                <input type="text" class="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" placeholder="输入子任务...">
+                                <button type="button" class="ml-2 text-red-500 hover:text-red-700 remove-subtask">
+                                    <i class="fa fa-minus-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" id="add-subtask" class="mt-2 text-primary hover:text-primary/80 text-sm">
+                            <i class="fa fa-plus"></i> 添加子任务
+                        </button>
+                    </div>
+                </div>
+                <div class="p-4 border-t bg-gray-50 flex justify-end space-x-3">
+                    <button id="cancel-plan-btn" class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors">
+                        取消
+                    </button>
+                    <button id="save-plan-btn" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
+                        保存
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 页脚信息 -->
+        <footer class="mt-12 text-center text-sm text-gray-500 animate-fade-in">
+            <p>今日完成事项 v1.1 | 记录每一天的成长</p>
+        </footer>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
